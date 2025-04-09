@@ -9,5 +9,11 @@ in pkgs.mkShell {
       python-pkgs.proxmoxer
     ]))
   ];
+
+  shellHook =
+  ''
+    export FLASK_APP=package
+    export FLASK_DEBUG=1
+  '';
 }
 
