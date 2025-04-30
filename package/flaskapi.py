@@ -47,10 +47,6 @@ def startFaultTolerance():
         threads.append(thread_resources)
         print(f"Thread started for VM {vmID}")
 
-        
-
-
-
 
 threading.Thread(target=APIThread, args=(proxmox, resources)).start()
 

@@ -14,10 +14,5 @@ in pkgs.mkShell {
     pkgs.openssl
     pkgs.certbot
   ];
-
-  shellHook =
-  ''
-    export FLASK_APP=package
-  '';
 }
 
