@@ -1,52 +1,37 @@
-from .fault_tolerance import fault_tolerance
+from .threads.faultTolerance import FaultTolerance
+from .threads.apiThread import APIThread
+from .classes.resources import Resources
+from .classes.threadResources import ThreadResources
 from flask import Blueprint, request, jsonify
 from proxmoxer import ProxmoxAPI
 from package import app
+from dotenv import load_dotenv
 import threading
 import time
+import os
+import requests
 from .models.vms import VM
 from . import db
 
-class Resources:
-    def __init__(self):
-        self.started = False
-        self.nodes = []
-        self.vms = []
-
-
-class ThreadResources:
-    def __init__(self):
-        self.vmID = ""
-        self.thread = None
-        self.killThread = None
-
+load_dotenv()
 
 threads = []
 
 main = Blueprint('main', __name__)
 
-proxmox = ProxmoxAPI("192.168.0.10:8006", user="root@pam", password="ubuntu", verify_ssl=False, timeout=30)
+ip = os.getenv("PROXMOX_IP")
+port = os.getenv("PROXMOX_PORT")
+user = os.getenv("PROXMOX_USER")
+password = os.getenv("PROXMOX_PASSWORD")
+
+pushover_token = os.getenv("PUSHOVER_TOKEN")
+pushover_user = os.getenv("PUSHOVER_USER")
+
+proxmox = ProxmoxAPI(ip + ":"+ port, user=user, password=password, verify_ssl=False, timeout=30)
 resources = Resources()
-
-def apiThread(proxmox, resources):
-    print("Starting API thread")
-    while(True):
-        try:
-            resources.nodes = proxmox.nodes.get()
-            resources.vms = proxmox.cluster.resources.get(type="vm")
-            if not resources.started:
-                resources.started = True
-                print("Proxmox API connection established and resources fetched.")
-            time.sleep(10)
-        except Exception as e:
-            print(f"Error connecting to Proxmox API: {e}")
-            time.sleep(5)
-
 
 def startFaultTolerance():
     global threads
-    global proxmox
-    global resources
     VMs = VM.query.all()
     for vm in VMs:
         vmID = vm.name
@@ -54,7 +39,7 @@ def startFaultTolerance():
         thread_resources.vmID = vmID
         thread_resources.killThread = threading.Event()
 
-        thread = threading.Thread(target=fault_tolerance, args=(vmID, proxmox, resources, thread_resources.killThread))
+        thread = threading.Thread(target=FaultTolerance, args=(vmID, proxmox, resources, thread_resources.killThread))
         thread.start()
 
         thread_resources.thread = thread
@@ -62,10 +47,12 @@ def startFaultTolerance():
         threads.append(thread_resources)
         print(f"Thread started for VM {vmID}")
 
+        
 
 
 
-threading.Thread(target=apiThread, args=(proxmox, resources)).start()
+
+threading.Thread(target=APIThread, args=(proxmox, resources)).start()
 
 while not resources.started:
     time.sleep(1)
@@ -75,6 +62,14 @@ with app.app_context():
     startFaultTolerance()
 
 
+requests.post(
+            f"https://api.pushover.net/1/messages.json",
+            data={
+                "token": pushover_token,
+                "user": pushover_user,
+                "message": f"Push notification from Proxmox API",
+            },
+        )
 
 @main.get("/rest/faulttolerance")
 def fault_tolerance_get():
@@ -89,7 +84,6 @@ def fault_tolerance_get():
 
 @main.post("/rest/faulttolerance")
 def fault_tolerance_post():
-    global proxmox
     global threads
 
     vmListPost = request.get_json()
@@ -115,7 +109,7 @@ def fault_tolerance_post():
             thread_resources = ThreadResources()
             thread_resources.vmID = vm
             thread_resources.killThread = threading.Event()
-            thread = threading.Thread(target=fault_tolerance, args=(vm, proxmox, resources, thread_resources.killThread))
+            thread = threading.Thread(target=FaultTolerance, args=(vm, proxmox, resources, thread_resources.killThread))
             thread.start()
             thread_resources.thread = thread
             threads.append(thread_resources)
@@ -123,11 +117,6 @@ def fault_tolerance_post():
         else:
             print(f"VM {vm} already exists in the database.")    
 
-
-        #new_vm = VM(name=vm)
-
-        #db.session.add(new_vm)
-        #db.session.commit()
     
     for vm in vmListDB:
         # If VM exists in the database but not in the request, stop the thread
@@ -138,11 +127,6 @@ def fault_tolerance_post():
                 VM.query.filter_by(name=vm.name).delete()
                 db.session.commit()
                 break
-
-#    for i in vmList:
-#        thread = threading.Thread(target=fault_tolerance, args=(i, proxmox, resources))
-#        threads.append(thread)
-#        thread.start()
 
     return {"status": "Fault tolerance completed"}, 200
 

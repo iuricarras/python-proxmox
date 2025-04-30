@@ -1,7 +1,6 @@
 import time
 
-
-def fault_tolerance(vmID, proxmox, resources, killThread):
+def FaultTolerance(vmID, proxmox, resources, killThread):
     vmHA= []
     nodeHA = []
 

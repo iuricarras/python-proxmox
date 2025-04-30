@@ -9,6 +9,7 @@ in pkgs.mkShell {
       python-pkgs.proxmoxer
       python-pkgs.pyopenssl
       python-pkgs.flask-sqlalchemy
+      python-pkgs.python-dotenv
     ]))
     pkgs.openssl
     pkgs.certbot
