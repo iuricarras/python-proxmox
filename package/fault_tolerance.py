@@ -1,22 +1,20 @@
 import time
-from proxmoxer import ProxmoxAPI
 
-def fault_tolerance(vmID):
+
+def fault_tolerance(vmID, proxmox, resources):
     vmHA= []
     nodeHA = []
 
-    proxmox = ProxmoxAPI("192.168.0.10:8006", user="root@pam", password="ubuntu", verify_ssl=False, timeout=60)
-
     id = 1
 
-    vms = proxmox.cluster.resources.get(type="vm")
+    vms = resources.vms
 
     for vm in vms:
         if(vm['id'] == vmID):
             vmHA = vm
 
     # Get node information
-    nodes = proxmox.nodes.get()
+    nodes = resources.nodes
     # Print node names and status
     for node in nodes:
         if(node['node'] == vmHA['node']):
@@ -28,24 +26,32 @@ def fault_tolerance(vmID):
             id = 0
         else:
             id = 1
-            
-        proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete()
+        
+        try:
+            proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete()
+            time.sleep(5)
+            proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot.post(
+                snapname=f"snapshot_ha_{id}",
+                vmstate=1,
+            )
+            print(f"[{vmID}] - Snapshot created.")
+            time.sleep(60)
+        except Exception as e:
+            print(f"[{vmID}] - Error managing snapshot: {e}")
+            time.sleep(10)
+            if(id == 1):
+                id = 0
+            else:
+                id = 1
 
-        time.sleep(5)
-
-        proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot.post(
-            snapname=f"snapshot_ha_{id}",
-            vmstate=1,
-        )
-
-        time.sleep(120)
-        vms = proxmox.cluster.resources.get(type="vm")
+  
+        vms = resources.vms
         for vm in vms:
             if(vm['id'] == vmID):
                 vmHA = vm
 
         # Get node information
-        nodes = proxmox.nodes.get()
+        nodes = resources.nodes
         # Print node names and status
         for node in nodes:
             if(node['node'] == vmHA['node']):
@@ -55,29 +61,44 @@ def fault_tolerance(vmID):
         print(f"VM ID: {vmHA['id']}, Name: {vmHA['name']}, Status: {vmHA['status']}")
         print(f"Node Name: {nodeHA['node']}, Status: {nodeHA['status']}")
 
-    print("E morreu...")
+    print(f"[{vmID}] - Node is offline, starting migrating...")
 
 
-    vms = proxmox.cluster.resources.get(type="vm")
+    vms = resources.vms
     for vm in vms:
         if(vm['id'] ==  vmID):
             vmHA = vm
-            
-    while vmHA['node'] == nodeHA['node']:
+    
+    originalNode = ''
+
+    nodes = resources.nodes
+        # Print node names and status
+    for node in nodes:
+        if(node['node'] == vmHA['node']):
+            originalNode = node
+
+    while vmHA['node'] == nodeHA['node'] and originalNode['status'] != 'running':
         time.sleep(10)
-        print("Waiting for VM to migrate...")
-        vms = proxmox.cluster.resources.get(type="vm")
+        print(f"[{vmID}] - Waiting for VM to migrate...")
+        vms = resources.vms
         for vm in vms:
             if(vm['id'] ==  vmID):
                 vmHA = vm
+                
+        nodes = resources.nodes
+        # Print node names and status
+        for node in nodes:
+            if(node['node'] == vmHA['node']):
+                originalNode = node
+
         
 
     if not proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").config.get()["snaptime"]:
-        print("VM is in prepare state, not good...")
+        print(f"[{vmID}] - VM is in prepare state, not good...")
         proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete(
             force=1,
         )
-        print("Snapshot deleted.")
+        print(f"[{vmID}] - Snapshot deleted.")
         time.sleep(3)
         if(id == 1):
             id = 0
@@ -85,5 +106,5 @@ def fault_tolerance(vmID):
             id = 1
 
     proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").rollback.post()
-    print("Rollback completed.")
+    print(f"[{vmID}] - Rollback completed.")
 

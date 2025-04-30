@@ -7,7 +7,10 @@ in pkgs.mkShell {
       python-pkgs.flask
       python-pkgs.flask-cors
       python-pkgs.proxmoxer
+      python-pkgs.pyopenssl
     ]))
+    pkgs.openssl
+    pkgs.certbot
   ];
 
   shellHook =
