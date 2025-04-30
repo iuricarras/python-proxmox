@@ -1,7 +1,7 @@
 import time
 
 
-def fault_tolerance(vmID, proxmox, resources):
+def fault_tolerance(vmID, proxmox, resources, killThread):
     vmHA= []
     nodeHA = []
 
@@ -20,7 +20,7 @@ def fault_tolerance(vmID, proxmox, resources):
         if(node['node'] == vmHA['node']):
             nodeHA = node
 
-    while nodeHA['status'] == 'online':
+    while not killThread.is_set() and nodeHA['status'] == 'online':
 
         if(id == 1):
             id = 0
@@ -60,6 +60,10 @@ def fault_tolerance(vmID, proxmox, resources):
 
         print(f"VM ID: {vmHA['id']}, Name: {vmHA['name']}, Status: {vmHA['status']}")
         print(f"Node Name: {nodeHA['node']}, Status: {nodeHA['status']}")
+
+    if killThread.is_set():
+        print(f"[{vmID}] - Thread killed.")
+        return
 
     print(f"[{vmID}] - Node is offline, starting migrating...")
 

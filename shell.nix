@@ -8,6 +8,7 @@ in pkgs.mkShell {
       python-pkgs.flask-cors
       python-pkgs.proxmoxer
       python-pkgs.pyopenssl
+      python-pkgs.flask-sqlalchemy
     ]))
     pkgs.openssl
     pkgs.certbot
@@ -16,7 +17,6 @@ in pkgs.mkShell {
   shellHook =
   ''
     export FLASK_APP=package
-    export FLASK_DEBUG=1
   '';
 }
 
