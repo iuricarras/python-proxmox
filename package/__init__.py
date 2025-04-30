@@ -1,18 +1,29 @@
 from flask import Flask
 from flask_cors import CORS
 from proxmoxer import ProxmoxAPI
+from flask_sqlalchemy import SQLAlchemy
+import os
 
 proxmox = None
 
-def create_app():
-    app = Flask(__name__)
-    CORS(app)  
+db = SQLAlchemy()
 
-    global proxmox
+from .models.vms import VM
 
-    
 
-    from .main import main as main_blueprint
-    app.register_blueprint(main_blueprint)
+app = Flask(__name__)
+CORS(app)  
 
-    return app
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+
+db.init_app(app)
+
+with app.app_context():
+    if not os.path.exists('db.sqlite'):
+        db.create_all()
+
+print("Database created")
+from .flaskapi import main as main_blueprint
+print("Registering main blueprint")
+app.register_blueprint(main_blueprint)
