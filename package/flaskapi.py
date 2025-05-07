@@ -141,20 +141,9 @@ def remote_migration():
     body = request.get_json()
     vmID = body['vmID']
     node = body['node']
-    if body['migration_token']:
-        clienttoken = body['migration_token']
-        clienttoken_bytes = bytes(clienttoken, 'utf-8')
-        tokenDecrypted = f.decrypt(clienttoken_bytes).decode("utf-8")
-        dataDecrypted = json.loads(tokenDecrypted)
-        target_endpoint = dataDecrypted['target_endpoint']
-        target_storage = dataDecrypted['target_storage']
-        target_bridge = dataDecrypted['target_bridge']
-    else:
-        target_endpoint = body['target_endpoint']
-        target_storage = body['target_storage']
-        target_bridge = body['target_bridge']
-
-    print(tokenDecrypted)
+    target_endpoint = body['target_endpoint']
+    target_storage = body['target_storage']
+    target_bridge = body['target_bridge']
 
     data = dict()
     data['target-endpoint'] = target_endpoint
