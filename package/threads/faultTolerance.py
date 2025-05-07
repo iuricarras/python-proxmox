@@ -1,6 +1,16 @@
 import time
+from dotenv import load_dotenv
+import os
+import requests
+
 
 def FaultTolerance(vmID, proxmox, resources, killThread):
+
+    load_dotenv()
+
+    pushover_token = os.getenv("PUSHOVER_TOKEN")
+    pushover_user = os.getenv("PUSHOVER_USER")
+
     vmHA= []
     nodeHA = []
 
@@ -65,7 +75,15 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
         return
 
     print(f"[{vmID}] - Node is offline, starting migrating...")
-
+    requests.post(
+            f"https://api.pushover.net/1/messages.json",
+            data={
+                "token": pushover_token,
+                "user": pushover_user,
+                "title": f"Fault Tolerance - Node {nodeHA['node']} offline - VM {vmID}",
+                "message": f"[{vmID}] - Node is offline. Starting migrating to another node.",
+            },
+        )
 
     vms = resources.vms
     for vm in vms:
@@ -110,4 +128,13 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
 
     proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").rollback.post()
     print(f"[{vmID}] - Rollback completed.")
+    requests.post(
+            f"https://api.pushover.net/1/messages.json",
+            data={
+                "token": pushover_token,
+                "user": pushover_user,
+                "title": f"Fault Tolerance - Rollback - VM {vmID}",
+                "message": f"[{vmID}] - Vm assigned to node {vmHA['node']} - Rollback completed.",
+            },
+        )
 

@@ -65,16 +65,6 @@ with app.app_context():
     print("Starting fault tolerance")
     startFaultTolerance()
 
-
-requests.post(
-            f"https://api.pushover.net/1/messages.json",
-            data={
-                "token": pushover_token,
-                "user": pushover_user,
-                "message": f"Push notification from Proxmox API",
-            },
-        )
-
 @main.get("/rest/faulttolerance")
 def fault_tolerance_get():
     vmList = []
@@ -186,9 +176,7 @@ def create_token():
     target_storage = body['target_storage']
     target_bridge = body['target_bridge']
 
-
     fingerprint = ""
-
 
     nodesCluster = proxmox.cluster.config.join.get()["nodelist"]
     for node in nodesCluster:
@@ -198,11 +186,11 @@ def create_token():
 
     date = datetime.now().today().strftime("%Y-%m-%d-%H-%M-%S")
 
-    proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
+    token = proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
         expire=int((datetime.now() + timedelta(days=14)).timestamp()),
     )
 
-    target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date},host={ipaddr},fingerprint={fingerprint}"
+    target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date}={token["value"]},host={ipaddr},fingerprint={fingerprint}"
 
     data = dict()
     data['target_endpoint'] = target_endpoint
