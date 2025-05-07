@@ -169,6 +169,23 @@ def remote_migration():
     except Exception as e:
         return {"error": str(e)}, 500
     
+@main.post("/rest/remotemigration/gettoken")
+def get_token():
+    body = request.get_json()
+    clienttoken = body['migration_token']
+    clienttoken_bytes = bytes(clienttoken, 'utf-8')
+    tokenDecrypted = f.decrypt(clienttoken_bytes).decode("utf-8")
+    dataDecrypted = json.loads(tokenDecrypted)
+    target_endpoint = dataDecrypted['target_endpoint']
+    target_storage = dataDecrypted['target_storage']
+    target_bridge = dataDecrypted['target_bridge']
+
+    data = dict()
+    data['target-endpoint'] = target_endpoint
+    data['target-storage'] = target_storage
+    data['target-bridge'] = target_bridge
+
+    return jsonify(data), 200
 
 @main.post("/rest/remotemigration/createtoken")
 def create_token():
