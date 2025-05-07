@@ -15,6 +15,7 @@ from .models.vms import VM
 from cryptography.fernet import Fernet
 from . import db
 import json
+import base64
 
 load_dotenv()
 
@@ -32,7 +33,7 @@ pushover_user = os.getenv("PUSHOVER_USER")
 
 secretkey = os.getenv("ENCRYPT_KEY")
 
-f = Fernet(secretkey)
+f = Fernet(secretkey.encode('utf-8'))   
 
 proxmox = ProxmoxAPI(ip + ":"+ port, user=user, password=password, verify_ssl=False, timeout=30)
 resources = Resources()
@@ -136,19 +137,24 @@ def fault_tolerance_post():
 @main.post("/rest/remotemigration")
 def remote_migration():
     global proxmox
+    global f
     body = request.get_json()
     vmID = body['vmID']
     node = body['node']
-    clienttoken = ''
-    if body['clienttoken']:
-        clienttoken = body['clienttoken']
-        tokenDecrypted = json.loads(f.decrypt(clienttoken))
-
-        
+    if body['migration_token']:
+        clienttoken = body['migration_token']
+        clienttoken_bytes = bytes(clienttoken, 'utf-8')
+        tokenDecrypted = f.decrypt(clienttoken_bytes).decode("utf-8")
+        dataDecrypted = json.loads(tokenDecrypted)
+        target_endpoint = dataDecrypted['target_endpoint']
+        target_storage = dataDecrypted['target_storage']
+        target_bridge = dataDecrypted['target_bridge']
     else:
         target_endpoint = body['target_endpoint']
         target_storage = body['target_storage']
         target_bridge = body['target_bridge']
+
+    print(tokenDecrypted)
 
     data = dict()
     data['target-endpoint'] = target_endpoint
@@ -167,6 +173,7 @@ def remote_migration():
 @main.post("/rest/remotemigration/createtoken")
 def create_token():
     global proxmox
+    global f
     body = request.get_json()
     nodePost = body['node']
     ipaddr = body['ipaddress']
@@ -185,21 +192,23 @@ def create_token():
 
     date = datetime.now().today().strftime("%Y-%m-%d-%H-%M-%S")
 
-    token = proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
+    proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
         expire=int((datetime.now() + timedelta(days=14)).timestamp()),
     )
 
     target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date},host={ipaddr},fingerprint={fingerprint}"
 
     data = dict()
-    data['target-endpoint'] = target_endpoint
-    data['target-storage'] = target_storage
-    data['target-bridge'] = target_bridge
+    data['target_endpoint'] = target_endpoint
+    data['target_storage'] = target_storage
+    data['target_bridge'] = target_bridge
 
-    dataEncrypted = f.encrypt(json.dumps(data, indent=2).encode('utf-8'))
+    dataEncrypted = f.encrypt(json.dumps(data).encode('utf-8'))
+    
+    dataJson = dict()
+    dataJson['migration_token'] = dataEncrypted.decode('utf-8')
 
-
-    return f'{dataEncrypted}', 200
+    return jsonify(dataJson), 200
 
 @main.get("/rest/test/")
 def test():
