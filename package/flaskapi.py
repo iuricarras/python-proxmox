@@ -188,6 +188,7 @@ def create_token():
 
     token = proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
         expire=int((datetime.now() + timedelta(days=14)).timestamp()),
+        privsep = 0
     )
 
     target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date}={token["value"]},host={ipaddr},fingerprint={fingerprint}"
