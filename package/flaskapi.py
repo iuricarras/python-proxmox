@@ -10,8 +10,11 @@ import threading
 import time
 import os
 import requests
+from datetime import datetime, timedelta
 from .models.vms import VM
+from cryptography.fernet import Fernet
 from . import db
+import json
 
 load_dotenv()
 
@@ -26,6 +29,10 @@ password = os.getenv("PROXMOX_PASSWORD")
 
 pushover_token = os.getenv("PUSHOVER_TOKEN")
 pushover_user = os.getenv("PUSHOVER_USER")
+
+secretkey = os.getenv("ENCRYPT_KEY")
+
+f = Fernet(secretkey)
 
 proxmox = ProxmoxAPI(ip + ":"+ port, user=user, password=password, verify_ssl=False, timeout=30)
 resources = Resources()
@@ -132,9 +139,16 @@ def remote_migration():
     body = request.get_json()
     vmID = body['vmID']
     node = body['node']
-    target_endpoint = body['target_endpoint']
-    target_storage = body['target_storage']
-    target_bridge = body['target_bridge']
+    clienttoken = ''
+    if body['clienttoken']:
+        clienttoken = body['clienttoken']
+        tokenDecrypted = json.loads(f.decrypt(clienttoken))
+
+        
+    else:
+        target_endpoint = body['target_endpoint']
+        target_storage = body['target_storage']
+        target_bridge = body['target_bridge']
 
     data = dict()
     data['target-endpoint'] = target_endpoint
@@ -148,6 +162,49 @@ def remote_migration():
         return {"status": "Remote migration completed"}, 200
     except Exception as e:
         return {"error": str(e)}, 500
-
     
 
+@main.post("/rest/remotemigration/createtoken")
+def create_token():
+    global proxmox
+    body = request.get_json()
+    nodePost = body['node']
+    ipaddr = body['ipaddress']
+    target_storage = body['target_storage']
+    target_bridge = body['target_bridge']
+
+
+    fingerprint = ""
+
+
+    nodesCluster = proxmox.cluster.config.join.get()["nodelist"]
+    for node in nodesCluster:
+        if node['name'] == nodePost:
+            fingerprint = node['pve_fp']
+            break
+
+    date = datetime.now().today().strftime("%Y-%m-%d-%H-%M-%S")
+
+    token = proxmox.access.users('root@pam').token("RemoteMigration-"+ date).post(
+        expire=int((datetime.now() + timedelta(days=14)).timestamp()),
+    )
+
+    target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date},host={ipaddr},fingerprint={fingerprint}"
+
+    data = dict()
+    data['target-endpoint'] = target_endpoint
+    data['target-storage'] = target_storage
+    data['target-bridge'] = target_bridge
+
+    dataEncrypted = f.encrypt(json.dumps(data, indent=2).encode('utf-8'))
+
+
+    return f'{dataEncrypted}', 200
+
+@main.get("/rest/test/")
+def test():
+    listStorage = []
+    for storage in proxmox.cluster.resources.get(type="storage"):
+        if storage['node'] == "pve1":
+            listStorage.append(storage)
+    return jsonify(listStorage), 200
