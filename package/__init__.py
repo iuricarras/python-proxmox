@@ -4,12 +4,12 @@ from proxmoxer import ProxmoxAPI
 from flask_sqlalchemy import SQLAlchemy
 import os
 
+
 proxmox = None
 
 db = SQLAlchemy()
 
 from .models.vms import VM
-
 
 app = Flask(__name__)
 CORS(app)  

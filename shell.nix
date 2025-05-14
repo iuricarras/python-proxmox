@@ -10,6 +10,7 @@ in pkgs.mkShell {
       python-pkgs.pyopenssl
       python-pkgs.flask-sqlalchemy
       python-pkgs.python-dotenv
+      python-pkgs.netifaces
     ]))
     pkgs.openssl
     pkgs.certbot

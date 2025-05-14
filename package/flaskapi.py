@@ -9,13 +9,11 @@ from dotenv import load_dotenv
 import threading
 import time
 import os
-import requests
 from datetime import datetime, timedelta
 from .models.vms import VM
 from cryptography.fernet import Fernet
 from . import db
 import json
-import base64
 
 load_dotenv()
 
