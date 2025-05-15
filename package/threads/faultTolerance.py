@@ -4,6 +4,7 @@ import os
 import requests
 
 
+
 def FaultTolerance(vmID, proxmox, resources, killThread):
 
     load_dotenv()
@@ -26,6 +27,7 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
     nodes = resources.nodes
     # Print node names and status
     for node in nodes:
+        print(vmHA)
         if(node['node'] == vmHA['node']):
             nodeHA = node
 
@@ -37,14 +39,19 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
             id = 1
         
         try:
-            proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete()
-            time.sleep(5)
-            proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot.post(
-                snapname=f"snapshot_ha_{id}",
-                vmstate=1,
-            )
+            for ip in resources.networks:
+                if ip == "192.168.0.50":
+                    print(f"[{vmID}] - Node is online, waiting...")
+                    proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete()
+            time.sleep(5) 
+            for ip in resources.networks:
+                if ip == "192.168.0.50":
+                    proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot.post(
+                        snapname=f"snapshot_ha_{id}",
+                        vmstate=1,
+                    )
             print(f"[{vmID}] - Snapshot created.")
-            time.sleep(60)
+            time.sleep(20)
         except Exception as e:
             print(f"[{vmID}] - Error managing snapshot: {e}")
             time.sleep(10)
@@ -75,15 +82,17 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
         return
 
     print(f"[{vmID}] - Node is offline, starting migrating...")
-    requests.post(
-            f"https://api.pushover.net/1/messages.json",
-            data={
-                "token": pushover_token,
-                "user": pushover_user,
-                "title": f"Fault Tolerance - Node {nodeHA['node']} offline - VM {vmID}",
-                "message": f"[{vmID}] - Node is offline. Starting migrating to another node.",
-            },
-        )
+    for ip in resources.networks:
+        if ip == "192.168.0.50":
+            requests.post(
+                    f"https://api.pushover.net/1/messages.json",
+                    data={
+                        "token": pushover_token,
+                        "user": pushover_user,
+                        "title": f"Fault Tolerance - Node {nodeHA['node']} offline - VM {vmID}",
+                        "message": f"[{vmID}] - Node is offline. Starting migrating to another node.",
+                    },
+                )
 
     vms = resources.vms
     for vm in vms:
@@ -113,28 +122,29 @@ def FaultTolerance(vmID, proxmox, resources, killThread):
                 originalNode = node
 
         
+    for ip in resources.networks:
+        if ip == "192.168.0.50":
+            if not proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").config.get()["snaptime"]:
+                print(f"[{vmID}] - VM is in prepare state, not good...")
+                proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete(
+                    force=1,
+                )
+                print(f"[{vmID}] - Snapshot deleted.")
+                time.sleep(3)
+                if(id == 1):
+                    id = 0
+                else:
+                    id = 1
 
-    if not proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").config.get()["snaptime"]:
-        print(f"[{vmID}] - VM is in prepare state, not good...")
-        proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").delete(
-            force=1,
-        )
-        print(f"[{vmID}] - Snapshot deleted.")
-        time.sleep(3)
-        if(id == 1):
-            id = 0
-        else:
-            id = 1
-
-    proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").rollback.post()
-    print(f"[{vmID}] - Rollback completed.")
-    requests.post(
-            f"https://api.pushover.net/1/messages.json",
-            data={
-                "token": pushover_token,
-                "user": pushover_user,
-                "title": f"Fault Tolerance - Rollback - VM {vmID}",
-                "message": f"[{vmID}] - Vm assigned to node {vmHA['node']} - Rollback completed.",
-            },
-        )
+            proxmox.nodes(vmHA['node']).qemu(vmHA['id'].split('/')[1]).snapshot(f"snapshot_ha_{id}").rollback.post()
+            print(f"[{vmID}] - Rollback completed.")
+            requests.post(
+                    f"https://api.pushover.net/1/messages.json",
+                    data={
+                        "token": pushover_token,
+                        "user": pushover_user,
+                        "title": f"Fault Tolerance - Rollback - VM {vmID}",
+                        "message": f"[{vmID}] - Vm assigned to node {vmHA['node']} - Rollback completed.",
+                    },
+                )
 

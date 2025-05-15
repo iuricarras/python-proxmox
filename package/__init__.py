@@ -3,9 +3,12 @@ from flask_cors import CORS
 from proxmoxer import ProxmoxAPI
 from flask_sqlalchemy import SQLAlchemy
 import os
-
+from dotenv import load_dotenv
 
 proxmox = None
+
+load_dotenv()
+db_uri = os.getenv("DB_FILE")
 
 db = SQLAlchemy()
 
@@ -15,12 +18,12 @@ app = Flask(__name__)
 CORS(app)  
 
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_uri
 
 db.init_app(app)
 
 with app.app_context():
-    if not os.path.exists('db.sqlite'):
+    if not os.path.exists(db_uri):
         db.create_all()
 
 print("Database created")

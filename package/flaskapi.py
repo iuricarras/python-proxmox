@@ -1,5 +1,6 @@
 from .threads.faultTolerance import FaultTolerance
 from .threads.apiThread import APIThread
+from .threads.db import DB
 from .classes.resources import Resources
 from .classes.threadResources import ThreadResources
 from flask import Blueprint, request, jsonify
@@ -36,23 +37,6 @@ f = Fernet(secretkey.encode('utf-8'))
 proxmox = ProxmoxAPI(ip + ":"+ port, user=user, password=password, verify_ssl=False, timeout=30)
 resources = Resources()
 
-def startFaultTolerance():
-    global threads
-    VMs = VM.query.all()
-    for vm in VMs:
-        vmID = vm.name
-        thread_resources = ThreadResources()
-        thread_resources.vmID = vmID
-        thread_resources.killThread = threading.Event()
-
-        thread = threading.Thread(target=FaultTolerance, args=(vmID, proxmox, resources, thread_resources.killThread))
-        thread.start()
-
-        thread_resources.thread = thread
-
-        threads.append(thread_resources)
-        print(f"Thread started for VM {vmID}")
-
 
 threading.Thread(target=APIThread, args=(proxmox, resources)).start()
 
@@ -61,7 +45,8 @@ while not resources.started:
 
 with app.app_context():
     print("Starting fault tolerance")
-    startFaultTolerance()
+    #startFaultTolerance()
+    threading.Thread(target=DB, args=(proxmox, resources)).start()
 
 @main.get("/rest/faulttolerance")
 def fault_tolerance_get():
@@ -81,44 +66,14 @@ def fault_tolerance_post():
     vmListPost = request.get_json()
     vmListDB = VM.query.all()
 
-
-    for vm in vmListPost:
-        # Check if VM exists in the database
-        vm_exists = False
-        for vm_db in vmListDB:
-            if vm_db.name == vm:
-                vm_exists = True
-                vmListDB.remove(vm_db)
-                break
-        if not vm_exists:
-            # If VM does not exist, create a new entry in the database
-            new_vm = VM(name=vm)
-            db.session.add(new_vm)
-            db.session.commit()
-            print(f"VM {vm} added to the database.")
-
-            # Start a new thread for the VM
-            thread_resources = ThreadResources()
-            thread_resources.vmID = vm
-            thread_resources.killThread = threading.Event()
-            thread = threading.Thread(target=FaultTolerance, args=(vm, proxmox, resources, thread_resources.killThread))
-            thread.start()
-            thread_resources.thread = thread
-            threads.append(thread_resources)
-            print(f"Thread started for VM {vm}")
-        else:
-            print(f"VM {vm} already exists in the database.")    
-
-    
     for vm in vmListDB:
-        # If VM exists in the database but not in the request, stop the thread
-        for thread_resources in threads:
-            if thread_resources.vmID == vm.name:
-                thread_resources.killThread.set()
-                print(f"Thread for VM {vm.name} stopped.")
-                VM.query.filter_by(name=vm.name).delete()
-                db.session.commit()
-                break
+        VM.query.filter_by(name=vm.name).delete()
+        db.session.commit()
+    
+    for vm in vmListPost:
+        new_vm = VM(name=vm)
+        db.session.add(new_vm)
+        db.session.commit()
 
     return {"status": "Fault tolerance completed"}, 200
 
@@ -189,7 +144,7 @@ def create_token():
         privsep = 0
     )
 
-    target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date}={token["value"]},host={ipaddr},fingerprint={fingerprint}"
+    target_endpoint= f"apitoken=PVEAPIToken=root@pam!RemoteMigration-{date}={token['value']},host={ipaddr},fingerprint={fingerprint}"
 
     data = dict()
     data['target_endpoint'] = target_endpoint

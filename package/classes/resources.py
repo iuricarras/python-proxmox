@@ -3,3 +3,4 @@ class Resources:
         self.started = False
         self.nodes = []
         self.vms = []
+        self.networks = []
